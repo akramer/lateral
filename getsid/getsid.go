@@ -1,3 +1,5 @@
+// Implement the getsid system call.
+// This appears to exist on Linux and FreeBSD at the very least.
 package getsid
 
 import "syscall"
