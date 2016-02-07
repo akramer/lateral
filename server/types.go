@@ -9,7 +9,8 @@ const (
 )
 
 type Request struct {
-	Type RequestType
+	Type   RequestType
+	HasFds bool
 }
 
 // The server's response.

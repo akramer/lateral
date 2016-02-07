@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -27,25 +28,48 @@ func NewUnixListener(v *viper.Viper) (*net.UnixListener, error) {
 	return l, nil
 }
 
-func readMessage(c *net.UnixConn) (*Request, error) {
-	// TODO: make this buffer configurable
-	payload := make([]byte, 8192)
-	oob := make([]byte, 8192)
-	n, _, _, _, err := c.ReadMsgUnix(payload, oob)
-	if err != nil && err != io.EOF {
+func readRequest(c *net.UnixConn) (*Request, error) {
+	var l uint32
+	err := binary.Read(c, binary.BigEndian, &l)
+	length := int(l)
+	if err != nil {
 		return nil, err
 	}
-	payload = payload[0:n]
+	payload := make([]byte, length)
+	n, err := c.Read(payload)
+	if err != nil {
+		return nil, err
+	} else if n != length {
+		return nil, fmt.Errorf("Payload was %d bytes rather than reported size of %d", n, length)
+	}
 	req := &Request{}
 	err = json.Unmarshal(payload, req)
 	if err != nil {
 		return nil, err
 	}
+	if !req.HasFds {
+		return req, nil
+	}
+
+	payload = make([]byte, 1)
+	// TODO: does this buffer need to be configurable?
+	oob := make([]byte, 8192)
+	n, _, _, _, err = c.ReadMsgUnix(payload, oob)
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	if n != 1 {
+		return nil, fmt.Errorf("Error reading OOB filedescriptors")
+	}
 	return req, nil
 }
 
-func writeMessage(c *net.UnixConn, resp *Response) error {
+func writeResponse(c *net.UnixConn, resp *Response) error {
 	payload, err := json.Marshal(resp)
+	if err != nil {
+		return err
+	}
+	err = binary.Write(c, binary.BigEndian, uint32(len(payload)))
 	if err != nil {
 		return err
 	}
@@ -56,7 +80,6 @@ func writeMessage(c *net.UnixConn, resp *Response) error {
 		return fmt.Errorf("Failed to write full payload, expected %v, wrote %v", len(payload), n)
 	}
 
-	c.CloseWrite()
 	return nil
 }
 
@@ -75,25 +98,30 @@ func Run(v *viper.Viper, l *net.UnixListener) {
 
 func runConnection(i *instance, c *net.UnixConn) {
 	defer c.Close()
-	req, err := readMessage(c)
-	if err != nil {
-		glog.Errorln("Failed to read a message from socket:", err)
-	}
-	var resp *Response
-	switch req.Type {
-	case REQUEST_GETPID:
-		resp, err = runGetpid(i, req)
-	}
-	if err != nil {
-		writeMessage(c,
-			&Response{
-				Type:    RESPONSE_ERR,
-				Message: err.Error(),
-			})
-	}
-	err = writeMessage(c, resp)
-	if err != nil {
-		glog.Errorln("Failed to write a message to socket:", err)
+	for {
+		req, err := readRequest(c)
+		if err == io.EOF {
+			return // Client closed the connection.
+		}
+		if err != nil {
+			glog.Errorln("Failed to read a message from socket:", err)
+		}
+		var resp *Response
+		switch req.Type {
+		case REQUEST_GETPID:
+			resp, err = runGetpid(i, req)
+		}
+		if err != nil {
+			writeResponse(c,
+				&Response{
+					Type:    RESPONSE_ERR,
+					Message: err.Error(),
+				})
+		}
+		err = writeResponse(c, resp)
+		if err != nil {
+			glog.Errorln("Failed to write a message to socket:", err)
+		}
 	}
 }
 
