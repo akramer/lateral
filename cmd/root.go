@@ -104,13 +104,13 @@ func initConfig() {
 	flag.Set("log_dir", fmt.Sprintf("%v", Viper.GetString("log_dir")))
 
 	if err == nil {
-		glog.Infoln("Using config file:", Viper.ConfigFileUsed())
+		glog.V(1).Infoln("Using config file:", Viper.ConfigFileUsed())
 	}
 
 	if Viper.GetString("socket") == "" {
 		Viper.Set("socket", defaultSocketPath())
 	}
-	glog.Infoln("Using socket:", Viper.GetString("socket"))
+	glog.V(1).Infoln("Using socket:", Viper.GetString("socket"))
 }
 
 func defaultSocketPath() string {
