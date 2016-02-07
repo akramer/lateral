@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"syscall"
 
 	"github.com/golang/glog"
 	"github.com/spf13/viper"
@@ -16,6 +17,12 @@ import (
 type instance struct {
 	m     sync.Mutex
 	viper *viper.Viper
+}
+
+var funcMap = map[RequestType]func(i *instance, req *Request) (*Response, error){
+	REQUEST_GETPID: runGetpid,
+	REQUEST_RUN:    runRun,
+	REQUEST_KILL:   runKill,
 }
 
 // Open and return a listening unix socket.
@@ -54,13 +61,32 @@ func readRequest(c *net.UnixConn) (*Request, error) {
 	payload = make([]byte, 1)
 	// TODO: does this buffer need to be configurable?
 	oob := make([]byte, 8192)
-	n, _, _, _, err = c.ReadMsgUnix(payload, oob)
+	n, oobn, _, _, err := c.ReadMsgUnix(payload, oob)
 	if err != nil && err != io.EOF {
 		return nil, err
 	}
 	if n != 1 {
 		return nil, fmt.Errorf("Error reading OOB filedescriptors")
 	}
+	oob = oob[0:oobn]
+	scm, err := syscall.ParseSocketControlMessage(oob)
+	if err != nil {
+		return nil, fmt.Errorf("Error parsing socket control message: %v", err)
+	}
+	var fds []int
+	for i := 0; i < len(scm); i++ {
+		tfds, err := syscall.ParseUnixRights(&scm[i])
+		if err == syscall.EINVAL {
+			continue // Wasn't a UnixRights Control Message
+		} else if err != nil {
+			return nil, fmt.Errorf("Error parsing unix rights: %v", err)
+		}
+		fds = append(fds, tfds...)
+	}
+	if len(fds) == 0 {
+		return nil, fmt.Errorf("Failed to receive any FDs on a request with HasFds == true")
+	}
+	req.ReceivedFds = fds
 	return req, nil
 }
 
@@ -96,6 +122,13 @@ func Run(v *viper.Viper, l *net.UnixListener) {
 	}
 }
 
+func sendError(c *net.UnixConn, err error) {
+	writeResponse(c, &Response{
+		Type:    RESPONSE_ERR,
+		Message: err.Error(),
+	})
+}
+
 func runConnection(i *instance, c *net.UnixConn) {
 	defer c.Close()
 	for {
@@ -107,20 +140,20 @@ func runConnection(i *instance, c *net.UnixConn) {
 			glog.Errorln("Failed to read a message from socket:", err)
 		}
 		var resp *Response
-		switch req.Type {
-		case REQUEST_GETPID:
-			resp, err = runGetpid(i, req)
+		f, t := funcMap[req.Type]
+		if t != true {
+			sendError(c, fmt.Errorf("unknown request type"))
+			continue
 		}
+		resp, err = f(i, req)
 		if err != nil {
-			writeResponse(c,
-				&Response{
-					Type:    RESPONSE_ERR,
-					Message: err.Error(),
-				})
+			sendError(c, err)
+			continue
 		}
 		err = writeResponse(c, resp)
 		if err != nil {
 			glog.Errorln("Failed to write a message to socket:", err)
+			return
 		}
 	}
 }
@@ -132,4 +165,52 @@ func runGetpid(i *instance, req *Request) (*Response, error) {
 		Getpid: &ResponseGetpid{pid},
 	}
 	return &r, nil
+}
+
+func runRun(in *instance, req *Request) (*Response, error) {
+	fmt.Printf("Received FDs! Original: %v, received: %v", req.Fds, req.ReceivedFds)
+	if req.Run == nil {
+		return nil, fmt.Errorf("Missing RequestRun struct")
+	}
+	var max int
+	for _, v := range req.Fds {
+		if v > max {
+			max = v
+		}
+	}
+	f := make([]*os.File, max+1)
+	for i, v := range req.Fds {
+		f[v] = os.NewFile(uintptr(req.ReceivedFds[i]), "fd")
+	}
+	attr := &os.ProcAttr{
+		Env:   req.Run.Env,
+		Dir:   req.Run.Cwd,
+		Files: f,
+	}
+	p, err := os.StartProcess(req.Run.Args[0], req.Run.Args, attr)
+	if err != nil {
+		return nil, err
+	}
+	p.Wait()
+	return &Response{Type: RESPONSE_ERR}, nil
+}
+
+func runKill(in *instance, req *Request) (*Response, error) {
+	glog.Infoln("Server going down with SIGKILL")
+	glog.Flush()
+
+	pgid, err := syscall.Getpgid(0)
+	if err != nil {
+		glog.Errorln("Failed to get pgid", err)
+		os.Exit(1)
+	}
+
+	err = syscall.Kill(-pgid, syscall.SIGKILL)
+	if err != nil {
+		glog.Errorln("Failed to kill our process group", err)
+		os.Exit(1)
+	}
+
+	// We'll never get here...
+	return nil, nil
 }

@@ -6,11 +6,24 @@ const (
 	REQUEST_RUN RequestType = iota
 	REQUEST_WAIT
 	REQUEST_GETPID
+	REQUEST_KILL
 )
 
 type Request struct {
 	Type   RequestType
 	HasFds bool
+	// List of Fds to be transferred by SendRequest
+	Fds []int
+	// Filled in on receiving side - list of fd numbers corresponding to
+	// the original FD numbers above
+	ReceivedFds []int
+	Run         *RequestRun
+}
+
+type RequestRun struct {
+	Args []string
+	Env  []string
+	Cwd  string
 }
 
 // The server's response.
@@ -19,6 +32,7 @@ type ResponseType int
 
 const (
 	RESPONSE_ERR ResponseType = iota
+	RESPONSE_OK
 	RESPONSE_GETPID
 )
 

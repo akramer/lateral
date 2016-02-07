@@ -18,26 +18,70 @@ import (
 	"os"
 	"syscall"
 
+	"github.com/akramer/lateral/client"
+	"github.com/akramer/lateral/server"
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 )
 
 const MAGICENV = "LAT_MAGIC"
 
+func realStart(cmd *cobra.Command, args []string) error {
+	err := syscall.Setpgid(0, 0)
+	if err != nil {
+		glog.Errorln("Error setting process group ID")
+		return err
+	}
+	os.Remove(Viper.GetString("socket"))
+	l, err := server.NewUnixListener(Viper)
+	defer l.Close()
+	if err != nil {
+		glog.Errorln("Error opening listening socket:", err)
+		return err
+	}
+	server.Run(Viper, l)
+	return nil
+}
+
+func forkMyself() error {
+	os.Setenv(MAGICENV, Viper.GetString("socket"))
+	attr := &syscall.ProcAttr{
+		Dir:   "/",
+		Env:   os.Environ(),
+		Files: []uintptr{0, 1, 2}}
+	_, err := syscall.ForkExec("/proc/self/exe", os.Args, attr)
+	return err
+}
+
+func isRunning() bool {
+	c, err := client.NewUnixConn(Viper)
+	defer c.Close()
+	if err == nil {
+		return true
+	}
+	return false
+}
+
 func runStart(cmd *cobra.Command, args []string) {
 	// If MAGICENV is set to the socket path, we can be (relatively) sure we're the child process.
 	if Viper.GetBool("start.foreground") || os.Getenv(MAGICENV) == Viper.GetString("socket") {
 		glog.Infoln("Not forking a child server")
-	} else {
-		glog.Infoln("forking child...")
-		os.Setenv(MAGICENV, Viper.GetString("socket"))
-		attr := &syscall.ProcAttr{
-			Dir:   "/",
-			Env:   os.Environ(),
-			Files: []uintptr{0, 1, 2}}
-		pid, err := syscall.ForkExec("/proc/self/exe", os.Args, attr)
+		err := realStart(cmd, args)
 		if err != nil {
-			glog.Errorln("Error forking subprocess: ", err, pid)
+			ExitCode = 1
+			return
+		}
+	} else {
+		if Viper.GetBool("new_server") && isRunning() {
+			glog.Errorln("Server already running and new_server specified.")
+			ExitCode = 1
+			return
+		}
+		err := forkMyself()
+		if err != nil {
+			glog.Errorln("Error forking subprocess: ", err)
+			ExitCode = 1
+			return
 		}
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"syscall"
 
 	"github.com/akramer/lateral/server"
 	"github.com/spf13/viper"
@@ -17,7 +18,6 @@ func NewUnixConn(v *viper.Viper) (*net.UnixConn, error) {
 }
 
 func SendRequest(c *net.UnixConn, req *server.Request) error {
-	oob := make([]byte, 0)
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return err
@@ -26,6 +26,20 @@ func SendRequest(c *net.UnixConn, req *server.Request) error {
 	if err != nil {
 		return err
 	}
+	n, err := c.Write(payload)
+	if err != nil {
+		return err
+	} else if n != len(payload) {
+		return fmt.Errorf("Failed to write full payload, expected %v, wrote %v", len(payload), n)
+	}
+
+	if !req.HasFds {
+		return nil
+	}
+	// Send filedescriptors with a 1 byte message.
+	var oob []byte
+	oob = syscall.UnixRights(req.Fds...)
+	payload = make([]byte, 1)
 	n, oobn, err := c.WriteMsgUnix(payload, oob, nil)
 	if err != nil {
 		return err
