@@ -7,52 +7,26 @@ import (
 	"github.com/spf13/viper"
 )
 
-type mockConn struct {
-	mockRequest Request
-	response    *Response
-	closed      bool
-}
-
-func (m *mockConn) ReadMessage() (*Request, error) {
-	return &m.mockRequest, nil
-}
-
-func (m *mockConn) WriteMessage(r *Response) error {
-	m.response = r
-	return nil
-}
-
-func (m *mockConn) Close() error {
-	m.closed = true
-	return nil
-}
-
-func makeTestInstance() *instance {
+func makeTestInstance(v *viper.Viper) *instance {
 	i := instance{
-		viper: viper.New(),
+		viper: v,
 	}
 	return &i
 }
 
-func TestRunConnection(t *testing.T) {
-	i := makeTestInstance()
-	m := mockConn{
-		mockRequest: Request{
-			Type: REQUEST_GETPID,
-		},
-	}
-	runConnection(i, &m)
-	if m.response.Type != RESPONSE_GETPID {
-		t.Error("Failed to get a response.")
-	}
+func makeTestViper() *viper.Viper {
+	v := viper.New()
+	return v
 }
 
 func TestRunGetpid(t *testing.T) {
-	i := makeTestInstance()
+	i := makeTestInstance(makeTestViper())
 	r := Request{Type: REQUEST_GETPID}
 	resp, err := runGetpid(i, &r)
-	if err != nil || resp.Type == RESPONSE_ERR {
-		t.Error("got error", err, resp.Message)
+	if err != nil {
+		t.Error("got error", err)
+	} else if resp.Type == RESPONSE_ERR {
+		t.Error("got error", resp.Message)
 	} else if resp.Getpid.Pid != os.Getpid() {
 		t.Error("Pid didn't match")
 	}

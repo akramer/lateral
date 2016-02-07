@@ -1,17 +1,5 @@
 package server
 
-type Listener interface {
-	Accept() (Conn, error)
-	Close() error
-}
-
-// Represents the server side of a connection.
-type Conn interface {
-	ReadMessage() (*Request, error)
-	WriteMessage(*Response) error
-	Close() error
-}
-
 type RequestType int
 
 const (
