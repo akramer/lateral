@@ -27,6 +27,7 @@ func makeTestViper() *viper.Viper {
 	return v
 }
 
+// Integration testing client+server with an actual unix socket.
 func TestRunConnection(t *testing.T) {
 	v := makeTestViper()
 	l, err := server.NewUnixListener(v)
@@ -74,8 +75,5 @@ func TestRunConnection(t *testing.T) {
 		t.Fatal("got error", err)
 	} else if resp.Type == server.RESPONSE_ERR {
 		t.Fatal("got error", resp.Message)
-	}
-	if resp.Getpid.Pid != os.Getpid() {
-		t.Error("Pid didn't match")
 	}
 }

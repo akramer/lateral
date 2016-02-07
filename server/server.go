@@ -192,7 +192,7 @@ func runRun(in *instance, req *Request) (*Response, error) {
 		return nil, err
 	}
 	p.Wait()
-	return &Response{Type: RESPONSE_ERR}, nil
+	return &Response{Type: RESPONSE_OK}, nil
 }
 
 func runKill(in *instance, req *Request) (*Response, error) {
