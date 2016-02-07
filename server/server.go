@@ -1,8 +1,6 @@
 package server
 
 import (
-	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -15,113 +13,67 @@ import (
 )
 
 type instance struct {
-	m     sync.Mutex
-	viper *viper.Viper
+	viper    *viper.Viper
+	listener *net.UnixListener
+
+	// m protects the following members
+	m sync.Mutex
+	// Number of process slots available
+	slots int
+	cond  *sync.Cond
+	// Has an error occurred at all?
+	errorOccurred bool
+	shuttingDown  bool
+	pending       []*Request
+	running       []*Request
+	finished      []finishedProcess
 }
 
-var funcMap = map[RequestType]func(i *instance, req *Request) (*Response, error){
-	REQUEST_GETPID: runGetpid,
-	REQUEST_RUN:    runRun,
-	REQUEST_KILL:   runKill,
+type finishedProcess struct {
+	request *Request
+	state   *os.ProcessState
 }
 
-// Open and return a listening unix socket.
-func NewUnixListener(v *viper.Viper) (*net.UnixListener, error) {
-	l, err := net.ListenUnix("unix", &net.UnixAddr{Net: "unix", Name: v.GetString("socket")})
-	if err != nil {
-		return nil, err
-	}
-
-	return l, nil
+var funcMap = map[RequestType]func(*instance, *Request) (*Response, error){
+	REQUEST_GETPID: (*instance).runGetpid,
+	REQUEST_RUN:    (*instance).runRun,
+	REQUEST_KILL:   (*instance).runKill,
+	REQUEST_WAIT:   (*instance).runWait,
 }
 
-func readRequest(c *net.UnixConn) (*Request, error) {
-	var l uint32
-	err := binary.Read(c, binary.BigEndian, &l)
-	length := int(l)
-	if err != nil {
-		return nil, err
+func newInstance(v *viper.Viper) *instance {
+	var i = instance{
+		viper: v,
+		slots: v.GetInt("start.concurrency"),
 	}
-	payload := make([]byte, length)
-	n, err := c.Read(payload)
-	if err != nil {
-		return nil, err
-	} else if n != length {
-		return nil, fmt.Errorf("Payload was %d bytes rather than reported size of %d", n, length)
-	}
-	req := &Request{}
-	err = json.Unmarshal(payload, req)
-	if err != nil {
-		return nil, err
-	}
-	if !req.HasFds {
-		return req, nil
-	}
-
-	payload = make([]byte, 1)
-	// TODO: does this buffer need to be configurable?
-	oob := make([]byte, 8192)
-	n, oobn, _, _, err := c.ReadMsgUnix(payload, oob)
-	if err != nil && err != io.EOF {
-		return nil, err
-	}
-	if n != 1 {
-		return nil, fmt.Errorf("Error reading OOB filedescriptors")
-	}
-	oob = oob[0:oobn]
-	scm, err := syscall.ParseSocketControlMessage(oob)
-	if err != nil {
-		return nil, fmt.Errorf("Error parsing socket control message: %v", err)
-	}
-	var fds []int
-	for i := 0; i < len(scm); i++ {
-		tfds, err := syscall.ParseUnixRights(&scm[i])
-		if err == syscall.EINVAL {
-			continue // Wasn't a UnixRights Control Message
-		} else if err != nil {
-			return nil, fmt.Errorf("Error parsing unix rights: %v", err)
-		}
-		fds = append(fds, tfds...)
-	}
-	if len(fds) == 0 {
-		return nil, fmt.Errorf("Failed to receive any FDs on a request with HasFds == true")
-	}
-	req.ReceivedFds = fds
-	return req, nil
+	i.cond = sync.NewCond(&i.m)
+	return &i
 }
 
-func writeResponse(c *net.UnixConn, resp *Response) error {
-	payload, err := json.Marshal(resp)
-	if err != nil {
-		return err
-	}
-	err = binary.Write(c, binary.BigEndian, uint32(len(payload)))
-	if err != nil {
-		return err
-	}
-	n, err := c.Write(payload)
-	if err != nil {
-		return err
-	} else if n != len(payload) {
-		return fmt.Errorf("Failed to write full payload, expected %v, wrote %v", len(payload), n)
-	}
-
-	return nil
+func (i *instance) broker() {
 }
 
 // Run the server's accept loop, waiting for connections from l.
 func Run(v *viper.Viper, l *net.UnixListener) {
-	var i = instance{viper: v}
+	i := newInstance(v)
+	i.listener = l
 	for {
 		c, err := l.AcceptUnix()
+		i.m.Lock()
+		if i.shuttingDown {
+			i.m.Unlock()
+			return
+		}
+		i.m.Unlock()
 		if err != nil {
 			glog.Errorln("Accept() failed on unix socket:", err)
 			return
 		}
-		go runConnection(&i, c)
+		go i.runConnection(c)
 	}
 }
 
+// Helper func, sends an error response to c.
 func sendError(c *net.UnixConn, err error) {
 	writeResponse(c, &Response{
 		Type:    RESPONSE_ERR,
@@ -129,7 +81,7 @@ func sendError(c *net.UnixConn, err error) {
 	})
 }
 
-func runConnection(i *instance, c *net.UnixConn) {
+func (i *instance) runConnection(c *net.UnixConn) {
 	defer c.Close()
 	for {
 		req, err := readRequest(c)
@@ -139,13 +91,12 @@ func runConnection(i *instance, c *net.UnixConn) {
 		if err != nil {
 			glog.Errorln("Failed to read a message from socket:", err)
 		}
-		var resp *Response
 		f, t := funcMap[req.Type]
 		if t != true {
 			sendError(c, fmt.Errorf("unknown request type"))
 			continue
 		}
-		resp, err = f(i, req)
+		resp, err := f(i, req)
 		if err != nil {
 			sendError(c, err)
 			continue
@@ -158,7 +109,7 @@ func runConnection(i *instance, c *net.UnixConn) {
 	}
 }
 
-func runGetpid(i *instance, req *Request) (*Response, error) {
+func (i *instance) runGetpid(req *Request) (*Response, error) {
 	pid := os.Getpid()
 	r := Response{
 		Type:   RESPONSE_GETPID,
@@ -167,18 +118,33 @@ func runGetpid(i *instance, req *Request) (*Response, error) {
 	return &r, nil
 }
 
-func runRun(in *instance, req *Request) (*Response, error) {
-	fmt.Printf("Received FDs! Original: %v, received: %v", req.Fds, req.ReceivedFds)
-	if req.Run == nil {
-		return nil, fmt.Errorf("Missing RequestRun struct")
+func del(r []*Request, target *Request) []*Request {
+	var i int
+	for i = 0; r[i] != target && i < len(r); i++ {
 	}
+	if i == len(r) {
+		return r
+	}
+	r, r[len(r)-1] = append(r[:i], r[i+1:]...), nil
+	return r
+}
+
+func (i *instance) doRun(req *Request) {
+	i.m.Lock()
+	for i.slots <= 0 {
+		i.cond.Wait()
+	}
+	i.slots--
+	i.pending = del(i.pending, req)
+	i.running = append(i.running, req)
+	i.m.Unlock()
 	var max int
 	for _, v := range req.Fds {
-		if v > max {
-			max = v
+		if v+1 > max {
+			max = v + 1
 		}
 	}
-	f := make([]*os.File, max+1)
+	f := make([]*os.File, max)
 	for i, v := range req.Fds {
 		f[v] = os.NewFile(uintptr(req.ReceivedFds[i]), "fd")
 	}
@@ -187,15 +153,47 @@ func runRun(in *instance, req *Request) (*Response, error) {
 		Dir:   req.Run.Cwd,
 		Files: f,
 	}
+	// TODO: add running process to the running list
 	p, err := os.StartProcess(req.Run.Args[0], req.Run.Args, attr)
-	if err != nil {
-		return nil, err
+	for _, v := range attr.Files {
+		if v != nil {
+			v.Close()
+		}
 	}
-	p.Wait()
+	if err != nil {
+		glog.Errorln("Error running command:", err)
+		i.m.Lock()
+		defer i.m.Unlock()
+		i.errorOccurred = true
+		i.running = del(i.running, req)
+		i.cond.Signal()
+		i.slots++
+		return
+	}
+	ps, err := p.Wait()
+	i.m.Lock()
+	defer i.m.Unlock()
+	i.finished = append(i.finished, finishedProcess{
+		request: req,
+		state:   ps,
+	})
+	i.running = del(i.running, req)
+	i.slots++
+	i.cond.Signal()
+}
+
+func (i *instance) runRun(req *Request) (*Response, error) {
+	if req.Run == nil {
+		return nil, fmt.Errorf("Missing RequestRun struct")
+	}
+	i.m.Lock()
+	defer i.m.Unlock()
+	i.pending = append(i.pending, req)
+	go i.doRun(req)
 	return &Response{Type: RESPONSE_OK}, nil
 }
 
-func runKill(in *instance, req *Request) (*Response, error) {
+func (i *instance) runKill(req *Request) (*Response, error) {
 	glog.Infoln("Server going down with SIGKILL")
 	glog.Flush()
 
@@ -213,4 +211,25 @@ func runKill(in *instance, req *Request) (*Response, error) {
 
 	// We'll never get here...
 	return nil, nil
+}
+
+func (i *instance) runWait(req *Request) (*Response, error) {
+	i.m.Lock()
+	for len(i.running) > 0 || len(i.pending) > 0 {
+		i.cond.Wait()
+	}
+	defer i.m.Unlock()
+	var exitStatus int
+	for _, p := range i.finished {
+		if !p.state.Success() {
+			exitStatus = 1
+		}
+	}
+	resp := &Response{
+		Type: RESPONSE_WAIT,
+		Wait: &ResponseWait{
+			ExitStatus: exitStatus,
+		},
+	}
+	return resp, nil
 }

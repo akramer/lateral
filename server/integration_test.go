@@ -24,6 +24,7 @@ func init() {
 func makeTestViper() *viper.Viper {
 	v := viper.New()
 	v.Set("socket", tempDir+"/socket")
+	v.Set("start.concurrency", 10)
 	return v
 }
 

@@ -15,18 +15,19 @@
 package cmd
 
 import (
+	"os"
+
 	"github.com/akramer/lateral/client"
 	"github.com/akramer/lateral/server"
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 )
 
-// waitCmd represents the wait command
-var waitCmd = &cobra.Command{
-	Use:   "wait",
-	Short: "Wait for all currently inserted tasks to finish",
-	Long: `Wait for all currently inserted tasks to finish.
-Returns 0 if all tasks exited with success, otherwise returns 1.`,
+// runCmd represents the run command
+var runCmd = &cobra.Command{
+	Use:   "run",
+	Short: "Run the given command in the lateral server",
+	Long:  `A longer description that spans multiple lines and likely contains examples`,
 	Run: func(cmd *cobra.Command, args []string) {
 		c, err := client.NewUnixConn(Viper)
 		if err != nil {
@@ -35,8 +36,21 @@ Returns 0 if all tasks exited with success, otherwise returns 1.`,
 			return
 		}
 		defer c.Close()
+		wd, err := os.Getwd()
+		if err != nil {
+			glog.Errorln("Error determining working directory")
+			ExitCode = 1
+			return
+		}
 		req := &server.Request{
-			Type: server.REQUEST_WAIT,
+			Type:   server.REQUEST_RUN,
+			HasFds: true,
+			Fds:    []int{0, 1, 2},
+			Run: &server.RequestRun{
+				Args: args,
+				Env:  os.Environ(),
+				Cwd:  wd,
+			},
 		}
 		err = client.SendRequest(c, req)
 		if err != nil {
@@ -50,13 +64,13 @@ Returns 0 if all tasks exited with success, otherwise returns 1.`,
 			ExitCode = 1
 			return
 		}
-		if resp.Type != server.RESPONSE_WAIT {
+		if resp.Type != server.RESPONSE_OK {
 			glog.Errorln("Error in server response:", resp.Message)
 		}
-		ExitCode = resp.Wait.ExitStatus
 	},
 }
 
 func init() {
-	RootCmd.AddCommand(waitCmd)
+	RootCmd.AddCommand(runCmd)
+
 }

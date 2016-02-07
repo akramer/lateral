@@ -34,14 +34,20 @@ const (
 	RESPONSE_ERR ResponseType = iota
 	RESPONSE_OK
 	RESPONSE_GETPID
+	RESPONSE_WAIT
 )
 
 type Response struct {
 	Type    ResponseType
 	Message string
 	Getpid  *ResponseGetpid
+	Wait    *ResponseWait
 }
 
 type ResponseGetpid struct {
 	Pid int
+}
+
+type ResponseWait struct {
+	ExitStatus int
 }
