@@ -57,7 +57,8 @@ var runCmd = &cobra.Command{
 		req := &server.Request{
 			Type:   server.REQUEST_RUN,
 			HasFds: true,
-			Fds:    []int{0, 1, 2},
+			// TODO: send all fds over the socket.
+			Fds: []int{0, 1, 2},
 			Run: &server.RequestRun{
 				Exe:  exe,
 				Args: args,

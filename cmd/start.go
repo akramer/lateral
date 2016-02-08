@@ -56,7 +56,9 @@ func forkMyself() error {
 
 func isRunning() bool {
 	c, err := client.NewUnixConn(Viper)
-	defer c.Close()
+	if c != nil {
+		c.Close()
+	}
 	if err == nil {
 		return true
 	}
@@ -73,9 +75,11 @@ func runStart(cmd *cobra.Command, args []string) {
 			return
 		}
 	} else {
-		if Viper.GetBool("new_server") && isRunning() {
-			glog.Errorln("Server already running and new_server specified.")
-			ExitCode = 1
+		if isRunning() {
+			if Viper.GetBool("start.new_server") {
+				glog.Errorln("Server already running and new_server specified.")
+				ExitCode = 1
+			}
 			return
 		}
 		err := forkMyself()

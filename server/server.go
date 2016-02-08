@@ -41,12 +41,12 @@ type finishedProcess struct {
 }
 
 var funcMap = map[RequestType]func(*instance, *Request) (*Response, error){
-	REQUEST_GETPID:   (*instance).runGetpid,
-	REQUEST_RUN:      (*instance).runRun,
-	REQUEST_KILL:     (*instance).runKill,
-	REQUEST_WAIT:     (*instance).runWait,
-	REQUEST_SHUTDOWN: (*instance).runShutdown,
-	REQUEST_CONFIG:   (*instance).runConfig,
+	REQUEST_GETPID:   (*instance).cmdGetpid,
+	REQUEST_RUN:      (*instance).cmdRun,
+	REQUEST_KILL:     (*instance).cmdKill,
+	REQUEST_WAIT:     (*instance).cmdWait,
+	REQUEST_SHUTDOWN: (*instance).cmdShutdown,
+	REQUEST_CONFIG:   (*instance).cmdConfig,
 }
 
 func newInstance(v *viper.Viper) *instance {
@@ -131,7 +131,7 @@ func (i *instance) connectionHandler(c *net.UnixConn) {
 	}
 }
 
-func (i *instance) runGetpid(req *Request) (*Response, error) {
+func (i *instance) cmdGetpid(req *Request) (*Response, error) {
 	pid := os.Getpid()
 	r := Response{
 		Type:   RESPONSE_GETPID,
@@ -213,7 +213,7 @@ func (i *instance) doRunInGoroutine(req *Request) {
 	i.putRunSlot(req, ps)
 }
 
-func (i *instance) runRun(req *Request) (*Response, error) {
+func (i *instance) cmdRun(req *Request) (*Response, error) {
 	if req.Run == nil {
 		return nil, fmt.Errorf("Missing RequestRun struct")
 	}
@@ -227,7 +227,7 @@ func (i *instance) runRun(req *Request) (*Response, error) {
 	return &Response{Type: RESPONSE_OK}, nil
 }
 
-func (i *instance) runKill(req *Request) (*Response, error) {
+func (i *instance) cmdKill(req *Request) (*Response, error) {
 	glog.Infoln("Server going down with SIGKILL")
 	glog.Flush()
 
@@ -247,7 +247,7 @@ func (i *instance) runKill(req *Request) (*Response, error) {
 	return nil, nil
 }
 
-func (i *instance) runWait(req *Request) (*Response, error) {
+func (i *instance) cmdWait(req *Request) (*Response, error) {
 	i.m.Lock()
 	for len(i.running) > 0 || len(i.pending) > 0 {
 		i.taskFinished.Wait()
@@ -271,7 +271,7 @@ func (i *instance) runWait(req *Request) (*Response, error) {
 	return resp, nil
 }
 
-func (i *instance) runConfig(req *Request) (*Response, error) {
+func (i *instance) cmdConfig(req *Request) (*Response, error) {
 	if req.Config == nil {
 		return nil, fmt.Errorf("Missing RequestConfig struct")
 	}
@@ -287,7 +287,7 @@ func (i *instance) runConfig(req *Request) (*Response, error) {
 	return &Response{Type: RESPONSE_OK}, nil
 }
 
-func (i *instance) runShutdown(req *Request) (*Response, error) {
+func (i *instance) cmdShutdown(req *Request) (*Response, error) {
 	i.m.Lock()
 	i.shuttingDown = true
 	// Reduce concurrency to 0. If tasks are running, slots will go negative, but

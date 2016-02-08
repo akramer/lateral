@@ -20,7 +20,7 @@ func makeTestViper() *viper.Viper {
 func TestRunGetpid(t *testing.T) {
 	i := makeTestInstance(makeTestViper())
 	r := Request{Type: REQUEST_GETPID}
-	resp, err := i.runGetpid(&r)
+	resp, err := i.cmdGetpid(&r)
 	if err != nil {
 		t.Error("got error", err)
 	} else if resp.Type == RESPONSE_ERR {
@@ -30,10 +30,10 @@ func TestRunGetpid(t *testing.T) {
 	}
 }
 
-func TestRunWait(t *testing.T) {
+func TestWait(t *testing.T) {
 	i := makeTestInstance(makeTestViper())
 	r := Request{Type: REQUEST_WAIT}
-	resp, err := i.runWait(&r)
+	resp, err := i.cmdWait(&r)
 	if err != nil {
 		t.Error("got error", err)
 	} else if resp.Type == RESPONSE_ERR {
@@ -50,14 +50,14 @@ func TestRunWait(t *testing.T) {
 			Env:  os.Environ(),
 		},
 	}
-	_, err = i.runRun(runCmd)
+	_, err = i.cmdRun(runCmd)
 	if err != nil {
 		t.Error("got error", err)
 	} else if resp.Type == RESPONSE_ERR {
 		t.Error("got error", resp.Message)
 	}
 
-	resp, err = i.runWait(&r)
+	resp, err = i.cmdWait(&r)
 	if err != nil {
 		t.Error("got error", err)
 	} else if resp.Type == RESPONSE_ERR {
