@@ -7,6 +7,7 @@ Have you ever used `xargs -P -n 1` in an attempt to run slow commands in paralle
 Lateral is here to help.
 
 Example usage:
+
      # start a lateral server - one per session (login shell), runs 10 parallel tasks by default
     lateral start
     for i in $(gather list of work); do
@@ -29,6 +30,7 @@ It also supports much more powerful things:
 The stdin, stdout, and stderr of the command to be run are passed to lateral, and so redirection to files works. This makes it trivial to have per-task log files.
 
 The parallelism is also dynamically adjustable at run-time.
+
     lateral start -p 0 # yup, it will just queue tasks with 0 parallelism
     for i in $(seq 1 100); do
       lateral run -- command_still_outputs_to_stdout_but_wont_spam inputfile$i
