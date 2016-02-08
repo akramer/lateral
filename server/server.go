@@ -198,7 +198,7 @@ func (i *instance) doRunInGoroutine(req *Request) {
 		Files: f,
 	}
 	// TODO: add running process to the running list
-	p, err := os.StartProcess(req.Run.Args[0], req.Run.Args, attr)
+	p, err := os.StartProcess(req.Run.Exe, req.Run.Args, attr)
 	for _, v := range attr.Files {
 		if v != nil {
 			v.Close()

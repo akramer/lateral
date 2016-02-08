@@ -24,6 +24,8 @@ type Request struct {
 }
 
 type RequestRun struct {
+	// Full path to the binary
+	Exe  string
 	Args []string
 	Env  []string
 	Cwd  string

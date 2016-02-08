@@ -67,6 +67,7 @@ func TestRunConnection(t *testing.T) {
 	req.HasFds = true
 	req.Type = server.REQUEST_RUN
 	req.Run = &server.RequestRun{
+		Exe:  "/bin/echo",
 		Args: []string{"/bin/echo", "foo"},
 		Env:  os.Environ(),
 	}

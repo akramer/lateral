@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"os"
+	"os/exec"
 
 	"github.com/akramer/lateral/client"
 	"github.com/akramer/lateral/server"
@@ -29,6 +30,11 @@ var runCmd = &cobra.Command{
 	Short: "Run the given command in the lateral server",
 	Long:  `A longer description that spans multiple lines and likely contains examples`,
 	Run: func(cmd *cobra.Command, args []string) {
+		if len(args) == 0 {
+			glog.Errorln("No command specified")
+			ExitCode = 1
+			return
+		}
 		c, err := client.NewUnixConn(Viper)
 		if err != nil {
 			glog.Errorln("Error connecting to server:", err)
@@ -42,11 +48,18 @@ var runCmd = &cobra.Command{
 			ExitCode = 1
 			return
 		}
+		exe, err := exec.LookPath(args[0])
+		if err != nil {
+			glog.Errorln("Failed to find executable", args[0])
+			ExitCode = 1
+			return
+		}
 		req := &server.Request{
 			Type:   server.REQUEST_RUN,
 			HasFds: true,
 			Fds:    []int{0, 1, 2},
 			Run: &server.RequestRun{
+				Exe:  exe,
 				Args: args,
 				Env:  os.Environ(),
 				Cwd:  wd,

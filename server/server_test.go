@@ -45,6 +45,7 @@ func TestRunWait(t *testing.T) {
 	runCmd := &Request{
 		Type: REQUEST_RUN,
 		Run: &RequestRun{
+			Exe:  "/bin/false",
 			Args: []string{"/bin/false"},
 			Env:  os.Environ(),
 		},
