@@ -104,6 +104,6 @@ func init() {
 	Viper.BindPFlag("start.new_server", startCmd.Flags().Lookup("new_server"))
 	startCmd.Flags().BoolP("foreground", "f", false, "Do not fork off a background server: run in the foreground.")
 	Viper.BindPFlag("start.foreground", startCmd.Flags().Lookup("foreground"))
-	startCmd.Flags().IntP("concurrency", "c", 10, "Number of concurrent tasks to run")
-	Viper.BindPFlag("start.concurrency", startCmd.Flags().Lookup("concurrency"))
+	startCmd.Flags().IntP("parallel", "p", 10, "Number of concurrent tasks to run")
+	Viper.BindPFlag("start.parallel", startCmd.Flags().Lookup("parallel"))
 }

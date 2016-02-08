@@ -7,6 +7,8 @@ const (
 	REQUEST_WAIT
 	REQUEST_GETPID
 	REQUEST_KILL
+	REQUEST_SHUTDOWN
+	REQUEST_CONFIG
 )
 
 type Request struct {
@@ -18,12 +20,18 @@ type Request struct {
 	// the original FD numbers above
 	ReceivedFds []int
 	Run         *RequestRun
+	Config      *RequestConfig
 }
 
 type RequestRun struct {
 	Args []string
 	Env  []string
 	Cwd  string
+}
+
+type RequestConfig struct {
+	// nil indicates lack of presence
+	Parallel *int
 }
 
 // The server's response.

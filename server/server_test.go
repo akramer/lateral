@@ -13,7 +13,7 @@ func makeTestInstance(v *viper.Viper) *instance {
 
 func makeTestViper() *viper.Viper {
 	v := viper.New()
-	v.Set("start.concurrency", 10)
+	v.Set("start.parallel", 10)
 	return v
 }
 

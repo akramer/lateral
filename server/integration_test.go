@@ -24,7 +24,7 @@ func init() {
 func makeTestViper() *viper.Viper {
 	v := viper.New()
 	v.Set("socket", tempDir+"/socket")
-	v.Set("start.concurrency", 10)
+	v.Set("start.parallel", 10)
 	return v
 }
 
@@ -36,7 +36,11 @@ func TestRunConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer l.Close()
-	go server.Run(v, l)
+	runFinished := make(chan struct{})
+	go func() {
+		server.Run(v, l)
+		close(runFinished)
+	}()
 	c, err := client.NewUnixConn(v)
 	if err != nil {
 		t.Fatal(err)
@@ -77,4 +81,20 @@ func TestRunConnection(t *testing.T) {
 	} else if resp.Type == server.RESPONSE_ERR {
 		t.Fatal("got error", resp.Message)
 	}
+
+	sdr := &server.Request{
+		Type: server.REQUEST_SHUTDOWN,
+	}
+	err = client.SendRequest(c, sdr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err = client.ReceiveResponse(c)
+	if err != nil {
+		t.Fatal("got error", err)
+	} else if resp.Type == server.RESPONSE_ERR {
+		t.Fatal("got error", resp.Message)
+	}
+	// This channel gets closed when Run() returns.
+	<-runFinished
 }

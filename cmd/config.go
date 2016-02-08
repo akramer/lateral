@@ -1,4 +1,4 @@
-// Copyright © 2016 Adam Kramer <akramer@gmail.com>
+// Copyright © 2016 NAME HERE <EMAIL ADDRESS>
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,13 +21,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// waitCmd represents the wait command
-var waitCmd = &cobra.Command{
-	Use:   "wait",
-	Short: "Wait for all currently inserted tasks to finish",
-	Long: `Wait for all currently inserted tasks to finish.
-Returns 0 if all tasks exited with success, otherwise returns 1.`,
+var configParallel int
+
+// configCmd represents the config command
+var configCmd = &cobra.Command{
+	Use:   "config",
+	Short: "Change the server configuration",
+	Long:  `Connect to the lateral server and change its configuration.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		config := &server.RequestConfig{}
+		if configParallel != -1 {
+			config.Parallel = &configParallel
+		}
 		c, err := client.NewUnixConn(Viper)
 		if err != nil {
 			glog.Errorln("Error connecting to server:", err)
@@ -36,7 +41,8 @@ Returns 0 if all tasks exited with success, otherwise returns 1.`,
 		}
 		defer c.Close()
 		req := &server.Request{
-			Type: server.REQUEST_WAIT,
+			Type:   server.REQUEST_CONFIG,
+			Config: config,
 		}
 		err = client.SendRequest(c, req)
 		if err != nil {
@@ -50,39 +56,14 @@ Returns 0 if all tasks exited with success, otherwise returns 1.`,
 			ExitCode = 1
 			return
 		}
-		if resp.Type != server.RESPONSE_WAIT {
-			glog.Errorln("Error in server response:", resp.Message)
-		}
-		ExitCode = resp.Wait.ExitStatus
-
-		if Viper.GetBool("wait.no_shutdown") {
-			return
-		}
-
-		req = &server.Request{
-			Type: server.REQUEST_SHUTDOWN,
-		}
-		err = client.SendRequest(c, req)
-		if err != nil {
-			glog.Errorln("Error sending request:", err)
-			ExitCode = 1
-			return
-		}
-		resp, err = client.ReceiveResponse(c)
-		if err != nil {
-			glog.Errorln("Error receiving response:", err)
-			ExitCode = 1
-			return
-		}
 		if resp.Type != server.RESPONSE_OK {
 			glog.Errorln("Error in server response:", resp.Message)
 		}
-
 	},
 }
 
 func init() {
-	RootCmd.AddCommand(waitCmd)
-	waitCmd.Flags().BoolP("no_shutdown", "n", false, "Do not shut down server after wait is complete")
-	Viper.BindPFlag("wait.no_shutdown", waitCmd.Flags().Lookup("no_shutdown"))
+	RootCmd.AddCommand(configCmd)
+
+	configCmd.Flags().IntVarP(&configParallel, "parallel", "p", -1, "Number of parallel tasks to run")
 }

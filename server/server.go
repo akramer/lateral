@@ -18,15 +18,21 @@ type instance struct {
 
 	// m protects the following members
 	m sync.Mutex
-	// Number of process slots available
+	// Number of process slots available for use
 	slots int
-	cond  *sync.Cond
-	// Has an error occurred at all?
-	errorOccurred bool
-	shuttingDown  bool
-	pending       []*Request
-	running       []*Request
-	finished      []finishedProcess
+	// When slots is incremented by 1, Signal cond
+	// Otherwise, when slots is changed, Broadcast cond
+	slotAvailable *sync.Cond
+	// Broadcast every time a running task is finished.
+	taskFinished *sync.Cond
+
+	errorOccurred    bool
+	shuttingDown     bool
+	shutdownComplete bool
+
+	pending  []*Request
+	running  []*Request
+	finished []finishedProcess
 }
 
 type finishedProcess struct {
@@ -35,18 +41,21 @@ type finishedProcess struct {
 }
 
 var funcMap = map[RequestType]func(*instance, *Request) (*Response, error){
-	REQUEST_GETPID: (*instance).runGetpid,
-	REQUEST_RUN:    (*instance).runRun,
-	REQUEST_KILL:   (*instance).runKill,
-	REQUEST_WAIT:   (*instance).runWait,
+	REQUEST_GETPID:   (*instance).runGetpid,
+	REQUEST_RUN:      (*instance).runRun,
+	REQUEST_KILL:     (*instance).runKill,
+	REQUEST_WAIT:     (*instance).runWait,
+	REQUEST_SHUTDOWN: (*instance).runShutdown,
+	REQUEST_CONFIG:   (*instance).runConfig,
 }
 
 func newInstance(v *viper.Viper) *instance {
 	var i = instance{
 		viper: v,
-		slots: v.GetInt("start.concurrency"),
+		slots: v.GetInt("start.parallel"),
 	}
-	i.cond = sync.NewCond(&i.m)
+	i.slotAvailable = sync.NewCond(&i.m)
+	i.taskFinished = sync.NewCond(&i.m)
 	return &i
 }
 
@@ -54,34 +63,47 @@ func (i *instance) broker() {
 }
 
 // Run the server's accept loop, waiting for connections from l.
+// Correct shutdown procedure is:
+// set slots to a number such that no new processes will run
+// wait for all running processes to finish
+// set shittingDown to true
+// close the listening socket
 func Run(v *viper.Viper, l *net.UnixListener) {
 	i := newInstance(v)
 	i.listener = l
 	for {
 		c, err := l.AcceptUnix()
 		i.m.Lock()
-		if i.shuttingDown {
-			i.m.Unlock()
-			return
-		}
+		sdc := i.shutdownComplete
 		i.m.Unlock()
-		if err != nil {
+		if sdc {
+			glog.Infoln("Shutdown complete. closing listener.")
+			if c != nil {
+				c.Close()
+			}
+			l.Close()
+			return
+		} else if err != nil {
 			glog.Errorln("Accept() failed on unix socket:", err)
 			return
 		}
-		go i.runConnection(c)
+		go i.connectionHandler(c)
 	}
 }
 
 // Helper func, sends an error response to c.
 func sendError(c *net.UnixConn, err error) {
-	writeResponse(c, &Response{
-		Type:    RESPONSE_ERR,
-		Message: err.Error(),
-	})
+	writeResponse(c, errorResponse(err))
 }
 
-func (i *instance) runConnection(c *net.UnixConn) {
+func errorResponse(err error) *Response {
+	return &Response{
+		Type:    RESPONSE_ERR,
+		Message: err.Error(),
+	}
+}
+
+func (i *instance) connectionHandler(c *net.UnixConn) {
 	defer c.Close()
 	for {
 		req, err := readRequest(c)
@@ -118,6 +140,7 @@ func (i *instance) runGetpid(req *Request) (*Response, error) {
 	return &r, nil
 }
 
+// Delete target from r. Returns the new slice.
 func del(r []*Request, target *Request) []*Request {
 	var i int
 	for i = 0; r[i] != target && i < len(r); i++ {
@@ -129,15 +152,36 @@ func del(r []*Request, target *Request) []*Request {
 	return r
 }
 
-func (i *instance) doRun(req *Request) {
+// Wait for a request slot to open, consume it, and move the request from the pending to the running queue.
+// Consumes a slot.
+func (i *instance) getRunSlot(req *Request) {
 	i.m.Lock()
+	defer i.m.Unlock()
 	for i.slots <= 0 {
-		i.cond.Wait()
+		i.slotAvailable.Wait()
 	}
 	i.slots--
 	i.pending = del(i.pending, req)
 	i.running = append(i.running, req)
-	i.m.Unlock()
+}
+
+// Remove request from the running queue and add the finished queue.
+// Frees up a slot.
+func (i *instance) putRunSlot(req *Request, ps *os.ProcessState) {
+	i.m.Lock()
+	defer i.m.Unlock()
+	i.finished = append(i.finished, finishedProcess{
+		request: req,
+		state:   ps,
+	})
+	i.running = del(i.running, req)
+	i.slots++
+	i.slotAvailable.Signal()
+	i.taskFinished.Broadcast()
+}
+
+func (i *instance) doRunInGoroutine(req *Request) {
+	i.getRunSlot(req)
 	var max int
 	for _, v := range req.Fds {
 		if v+1 > max {
@@ -162,24 +206,11 @@ func (i *instance) doRun(req *Request) {
 	}
 	if err != nil {
 		glog.Errorln("Error running command:", err)
-		i.m.Lock()
-		defer i.m.Unlock()
-		i.errorOccurred = true
-		i.running = del(i.running, req)
-		i.cond.Signal()
-		i.slots++
+		i.putRunSlot(req, nil)
 		return
 	}
 	ps, err := p.Wait()
-	i.m.Lock()
-	defer i.m.Unlock()
-	i.finished = append(i.finished, finishedProcess{
-		request: req,
-		state:   ps,
-	})
-	i.running = del(i.running, req)
-	i.slots++
-	i.cond.Signal()
+	i.putRunSlot(req, ps)
 }
 
 func (i *instance) runRun(req *Request) (*Response, error) {
@@ -188,8 +219,11 @@ func (i *instance) runRun(req *Request) (*Response, error) {
 	}
 	i.m.Lock()
 	defer i.m.Unlock()
+	if i.shuttingDown {
+		return nil, fmt.Errorf("Cannot send requests to a shutting down server.")
+	}
 	i.pending = append(i.pending, req)
-	go i.doRun(req)
+	go i.doRunInGoroutine(req)
 	return &Response{Type: RESPONSE_OK}, nil
 }
 
@@ -216,15 +250,18 @@ func (i *instance) runKill(req *Request) (*Response, error) {
 func (i *instance) runWait(req *Request) (*Response, error) {
 	i.m.Lock()
 	for len(i.running) > 0 || len(i.pending) > 0 {
-		i.cond.Wait()
+		i.taskFinished.Wait()
 	}
-	defer i.m.Unlock()
 	var exitStatus int
 	for _, p := range i.finished {
-		if !p.state.Success() {
+		if p.state != nil && !p.state.Success() {
 			exitStatus = 1
 		}
 	}
+	if i.errorOccurred == true {
+		exitStatus = 2
+	}
+	i.m.Unlock()
 	resp := &Response{
 		Type: RESPONSE_WAIT,
 		Wait: &ResponseWait{
@@ -232,4 +269,35 @@ func (i *instance) runWait(req *Request) (*Response, error) {
 		},
 	}
 	return resp, nil
+}
+
+func (i *instance) runConfig(req *Request) (*Response, error) {
+	if req.Config == nil {
+		return nil, fmt.Errorf("Missing RequestConfig struct")
+	}
+	i.m.Lock()
+	defer i.m.Unlock()
+	if req.Config.Parallel != nil {
+		diff := i.viper.GetInt("start.parallel") - *req.Config.Parallel
+		glog.Infof("Chaning parallelism: subtracting %d from slots", diff)
+		i.slots -= diff
+		i.viper.Set("start.parallel", req.Config.Parallel)
+		i.slotAvailable.Broadcast()
+	}
+	return &Response{Type: RESPONSE_OK}, nil
+}
+
+func (i *instance) runShutdown(req *Request) (*Response, error) {
+	i.m.Lock()
+	i.shuttingDown = true
+	// Reduce concurrency to 0. If tasks are running, slots will go negative, but
+	// will eventually be incremented to 0 once they're finished.
+	i.slots -= i.viper.GetInt("start.parallel")
+	for i.slots < 0 {
+		i.taskFinished.Wait()
+	}
+	defer i.m.Unlock()
+	i.shutdownComplete = true
+	i.listener.Close()
+	return &Response{Type: RESPONSE_OK}, nil
 }
