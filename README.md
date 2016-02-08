@@ -15,8 +15,8 @@ Example usage:
       lateral run -- my_slow_command $i
     done
     # Wait for all the work to be done
-    lateral wait
-    echo $? # if any commands returned a non-zero status, returns non-zero, also kills the server when complete.
+    lateral wait # if any commands returned a non-zero status, returns non-zero, also kills the server when complete.
+    echo $?
 
 This is the most basic usage, and it's simpler than using xargs.
 It also supports much more powerful things:
