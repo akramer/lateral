@@ -20,7 +20,6 @@ import (
 	"fmt"
 
 	"github.com/BurntSushi/toml"
-	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
 )
@@ -42,9 +41,7 @@ func runDumpconfigCmd(cmd *cobra.Command, args []string) {
 		out, err = yaml.Marshal(settings)
 	}
 	if err != nil {
-		glog.Errorln("Failed to marshal the configuration: ", err)
-		ExitCode = 1
-		return
+		panic(fmt.Errorf("Failed to marshal the configuration: %v", err))
 	}
 	fmt.Println(string(out))
 }

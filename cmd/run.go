@@ -15,12 +15,12 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 
 	"github.com/akramer/lateral/client"
 	"github.com/akramer/lateral/server"
-	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 )
 
@@ -31,28 +31,20 @@ var runCmd = &cobra.Command{
 	Long:  `A longer description that spans multiple lines and likely contains examples`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
-			glog.Errorln("No command specified")
-			ExitCode = 1
-			return
+			panic(fmt.Errorf("No command specified"))
 		}
 		c, err := client.NewUnixConn(Viper)
 		if err != nil {
-			glog.Errorln("Error connecting to server:", err)
-			ExitCode = 1
-			return
+			panic(fmt.Errorf("Error connecting to server: %v", err))
 		}
 		defer c.Close()
 		wd, err := os.Getwd()
 		if err != nil {
-			glog.Errorln("Error determining working directory")
-			ExitCode = 1
-			return
+			panic(fmt.Errorf("Error determining working directory"))
 		}
 		exe, err := exec.LookPath(args[0])
 		if err != nil {
-			glog.Errorln("Failed to find executable", args[0])
-			ExitCode = 1
-			return
+			panic(fmt.Errorf("Failed to find executable %v", args[0]))
 		}
 		req := &server.Request{
 			Type:   server.REQUEST_RUN,
@@ -68,18 +60,14 @@ var runCmd = &cobra.Command{
 		}
 		err = client.SendRequest(c, req)
 		if err != nil {
-			glog.Errorln("Error sending request:", err)
-			ExitCode = 1
-			return
+			panic(fmt.Errorf("Error sending request: %v", err))
 		}
 		resp, err := client.ReceiveResponse(c)
 		if err != nil {
-			glog.Errorln("Error receiving response:", err)
-			ExitCode = 1
-			return
+			panic(fmt.Errorf("Error receiving response: %v", err))
 		}
 		if resp.Type != server.RESPONSE_OK {
-			glog.Errorln("Error in server response:", resp.Message)
+			panic(fmt.Errorf("Error in server response: %v", resp.Message))
 		}
 	},
 }

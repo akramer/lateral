@@ -20,7 +20,6 @@ import (
 	"os"
 
 	"github.com/akramer/lateral/getsid"
-	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -90,7 +89,7 @@ func initConfig() {
 	Viper.AutomaticEnv() // read in environment variables that match
 
 	// If a config file is found, read it in.
-	err := Viper.ReadInConfig()
+	Viper.ReadInConfig()
 
 	// glog uses the flag library, not pflags.
 	// Parsing an empty argv suppresses a warning and allows pass-through of viper values.
@@ -103,21 +102,16 @@ func initConfig() {
 	flag.Set("log_backtrace_at", fmt.Sprintf("%v", Viper.GetString("log_backtrace_at")))
 	flag.Set("log_dir", fmt.Sprintf("%v", Viper.GetString("log_dir")))
 
-	if err == nil {
-		glog.V(1).Infoln("Using config file:", Viper.ConfigFileUsed())
-	}
-
 	if Viper.GetString("socket") == "" {
 		Viper.Set("socket", defaultSocketPath())
 	}
-	glog.V(1).Infoln("Using socket:", Viper.GetString("socket"))
 }
 
 func defaultSocketPath() string {
 	home := os.Getenv("HOME")
 	sid, err := getsid.Getsid(0)
 	if err != nil {
-		glog.Errorln("error determining sid, using 0: ", err)
+		fmt.Fprintf(os.Stderr, "error determining sid, using 0: %v", err)
 	}
 	name := home + "/.lateral/socket." + fmt.Sprintf("%d", sid)
 	return name

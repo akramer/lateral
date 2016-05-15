@@ -19,7 +19,6 @@ import (
 
 	"github.com/akramer/lateral/client"
 	"github.com/akramer/lateral/server"
-	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 )
 
@@ -31,9 +30,7 @@ var getpidCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		c, err := client.NewUnixConn(Viper)
 		if err != nil {
-			glog.Errorln("Error connecting to server:", err)
-			ExitCode = 1
-			return
+			panic(fmt.Errorf("Error connecting to server: %v", err))
 		}
 		defer c.Close()
 		req := &server.Request{
@@ -41,18 +38,14 @@ var getpidCmd = &cobra.Command{
 		}
 		err = client.SendRequest(c, req)
 		if err != nil {
-			glog.Errorln("Error sending request:", err)
-			ExitCode = 1
-			return
+			panic(fmt.Errorf("Error sending request: %v", err))
 		}
 		resp, err := client.ReceiveResponse(c)
 		if err != nil {
-			glog.Errorln("Error receiving response:", err)
-			ExitCode = 1
-			return
+			panic(fmt.Errorf("Error receiving response: %v", err))
 		}
 		if resp.Type != server.RESPONSE_GETPID {
-			glog.Errorln("Error in server response:", resp.Message)
+			panic(fmt.Errorf("Error in server response: %v", resp.Message))
 		}
 		fmt.Printf("%d\n", resp.Getpid.Pid)
 	},

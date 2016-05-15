@@ -15,6 +15,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/akramer/lateral/cmd"
@@ -22,7 +23,13 @@ import (
 )
 
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintln(os.Stderr, "Fatal error:", r)
+			os.Exit(1)
+		}
+		glog.Flush()
+		os.Exit(cmd.ExitCode)
+	}()
 	cmd.Execute()
-	glog.Flush()
-	os.Exit(cmd.ExitCode)
 }
