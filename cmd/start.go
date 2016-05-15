@@ -19,6 +19,7 @@ import (
 	"syscall"
 
 	"github.com/akramer/lateral/client"
+	"github.com/akramer/lateral/platform"
 	"github.com/akramer/lateral/server"
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
@@ -45,12 +46,13 @@ func realStart(cmd *cobra.Command, args []string) error {
 }
 
 func forkMyself() error {
+	exe, err := platform.Getexe()
 	os.Setenv(MAGICENV, Viper.GetString("socket"))
 	attr := &syscall.ProcAttr{
 		Dir:   "/",
 		Env:   os.Environ(),
 		Files: []uintptr{0, 1, 2}}
-	_, err := syscall.ForkExec("/proc/self/exe", os.Args, attr)
+	_, err = syscall.ForkExec(exe, os.Args, attr)
 	return err
 }
 
