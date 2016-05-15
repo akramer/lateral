@@ -59,22 +59,6 @@ func init() {
 	RootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default $HOME/.lateral/config.yaml)")
 	RootCmd.PersistentFlags().StringP("socket", "s", "", "UNIX domain socket path (default $HOME/.lateral/socket.$SESSIONID)")
 	Viper.BindPFlag("socket", RootCmd.PersistentFlags().Lookup("socket"))
-
-	// glog flags
-	RootCmd.PersistentFlags().Bool("logtostderr", false, "log to standard error instead of files")
-	Viper.BindPFlag("logtostderr", RootCmd.PersistentFlags().Lookup("logtostderr"))
-	RootCmd.PersistentFlags().Bool("alsologtostderr", false, "log to standard error as well as files")
-	Viper.BindPFlag("alsologtostderr", RootCmd.PersistentFlags().Lookup("alsologtostderr"))
-	RootCmd.PersistentFlags().String("stderrthreshold", "ERROR", "logs at or above this threshold go to stderr")
-	Viper.BindPFlag("stderrthreshold", RootCmd.PersistentFlags().Lookup("stderrthreshold"))
-	RootCmd.PersistentFlags().IntP("v", "v", 0, "log level for V logs")
-	Viper.BindPFlag("v", RootCmd.PersistentFlags().Lookup("v"))
-	RootCmd.PersistentFlags().String("vmodule", "", "comma-separated list of pattern=N settings for file-filtered logging")
-	Viper.BindPFlag("vmodule", RootCmd.PersistentFlags().Lookup("vmodule"))
-	RootCmd.PersistentFlags().String("log_backtrace_at", "", "when logging hits line file:N, emit a stack trace")
-	Viper.BindPFlag("log_backtrace_at", RootCmd.PersistentFlags().Lookup("log_backtrace_at"))
-	RootCmd.PersistentFlags().String("log_dir", "", "If non-empty, write log files in this directory")
-	Viper.BindPFlag("log_dir", RootCmd.PersistentFlags().Lookup("log_dir"))
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -94,13 +78,13 @@ func initConfig() {
 	// glog uses the flag library, not pflags.
 	// Parsing an empty argv suppresses a warning and allows pass-through of viper values.
 	flag.CommandLine.Parse([]string{})
-	flag.Set("logtostderr", fmt.Sprintf("%v", Viper.GetBool("logtostderr")))
-	flag.Set("alsologtostderr", fmt.Sprintf("%v", Viper.GetBool("alsologtostderr")))
-	flag.Set("stderrthreshold", fmt.Sprintf("%v", Viper.GetString("stderrthreshold")))
-	flag.Set("v", fmt.Sprintf("%v", Viper.GetInt("v")))
-	flag.Set("vmodule", fmt.Sprintf("%v", Viper.GetString("vmodule")))
-	flag.Set("log_backtrace_at", fmt.Sprintf("%v", Viper.GetString("log_backtrace_at")))
-	flag.Set("log_dir", fmt.Sprintf("%v", Viper.GetString("log_dir")))
+	flag.Set("logtostderr", fmt.Sprintf("%v", Viper.GetBool("server.logtostderr")))
+	flag.Set("alsologtostderr", fmt.Sprintf("%v", Viper.GetBool("server.alsologtostderr")))
+	flag.Set("stderrthreshold", fmt.Sprintf("%v", Viper.GetString("server.stderrthreshold")))
+	flag.Set("v", fmt.Sprintf("%v", Viper.GetInt("server.v")))
+	flag.Set("vmodule", fmt.Sprintf("%v", Viper.GetString("server.vmodule")))
+	flag.Set("log_backtrace_at", fmt.Sprintf("%v", Viper.GetString("server.log_backtrace_at")))
+	flag.Set("log_dir", fmt.Sprintf("%v", Viper.GetString("server.log_dir")))
 
 	if Viper.GetString("socket") == "" {
 		Viper.Set("socket", defaultSocketPath())

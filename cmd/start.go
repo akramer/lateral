@@ -100,16 +100,13 @@ func runStart(cmd *cobra.Command, args []string) {
 	} else {
 		if isRunning() {
 			if Viper.GetBool("start.new_server") {
-				glog.Errorln("Server already running and new_server specified.")
-				ExitCode = 1
+				panic(fmt.Errorf("Server already running and new_server specified"))
 			}
 			return
 		}
 		err := forkMyself()
 		if err != nil {
-			glog.Errorln("Error forking subprocess: ", err)
-			ExitCode = 1
-			return
+			panic(fmt.Errorf("Error forking subprocess: %v", err))
 		}
 	}
 }
@@ -133,4 +130,20 @@ func init() {
 	Viper.BindPFlag("start.foreground", startCmd.Flags().Lookup("foreground"))
 	startCmd.Flags().IntP("parallel", "p", 10, "Number of concurrent tasks to run")
 	Viper.BindPFlag("start.parallel", startCmd.Flags().Lookup("parallel"))
+
+	// glog flags
+	startCmd.PersistentFlags().Bool("logtostderr", false, "log to standard error instead of files")
+	Viper.BindPFlag("server.logtostderr", startCmd.PersistentFlags().Lookup("logtostderr"))
+	startCmd.PersistentFlags().Bool("alsologtostderr", false, "log to standard error as well as files")
+	Viper.BindPFlag("server.alsologtostderr", startCmd.PersistentFlags().Lookup("alsologtostderr"))
+	startCmd.PersistentFlags().String("stderrthreshold", "ERROR", "logs at or above this threshold go to stderr")
+	Viper.BindPFlag("server.stderrthreshold", startCmd.PersistentFlags().Lookup("stderrthreshold"))
+	startCmd.PersistentFlags().IntP("v", "v", 0, "log level for V logs")
+	Viper.BindPFlag("server.v", startCmd.PersistentFlags().Lookup("v"))
+	startCmd.PersistentFlags().String("vmodule", "", "comma-separated list of pattern=N settings for file-filtered logging")
+	Viper.BindPFlag("server.vmodule", startCmd.PersistentFlags().Lookup("vmodule"))
+	startCmd.PersistentFlags().String("log_backtrace_at", "", "when logging hits line file:N, emit a stack trace")
+	Viper.BindPFlag("server.log_backtrace_at", startCmd.PersistentFlags().Lookup("log_backtrace_at"))
+	startCmd.PersistentFlags().String("log_dir", "", "If non-empty, write log files in this directory")
+	Viper.BindPFlag("server.log_dir", startCmd.PersistentFlags().Lookup("log_dir"))
 }
