@@ -279,7 +279,7 @@ func (i *instance) cmdConfig(req *Request) (*Response, error) {
 	defer i.m.Unlock()
 	if req.Config.Parallel != nil {
 		diff := i.viper.GetInt("start.parallel") - *req.Config.Parallel
-		glog.Infof("Chaning parallelism: subtracting %d from slots", diff)
+		glog.Infof("Changing parallelism: adding %d slots", -diff)
 		i.slots -= diff
 		i.viper.Set("start.parallel", req.Config.Parallel)
 		i.slotAvailable.Broadcast()

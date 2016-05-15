@@ -2,6 +2,7 @@ package server
 
 import (
 	"os"
+	"os/exec"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -42,11 +43,16 @@ func TestWait(t *testing.T) {
 		t.Error("Exit status wasn't 0")
 	}
 
+	exe, err := exec.LookPath("false")
+	if err != nil {
+		t.Fatal("Couldn't find executable 'false'", err)
+	}
+
 	runCmd := &Request{
 		Type: REQUEST_RUN,
 		Run: &RequestRun{
-			Exe:  "/bin/false",
-			Args: []string{"/bin/false"},
+			Exe:  exe,
+			Args: []string{exe},
 			Env:  os.Environ(),
 		},
 	}

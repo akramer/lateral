@@ -29,12 +29,12 @@ var killCmd = &cobra.Command{
 This should kill the server, and any subprocesses that have not changed their process group.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		c, err := client.NewUnixConn(Viper)
-		defer c.Close()
 		if err != nil {
 			glog.Errorln("Error connecting to server:", err)
 			ExitCode = 1
 			return
 		}
+		defer c.Close()
 		req := &server.Request{
 			Type: server.REQUEST_KILL,
 		}
