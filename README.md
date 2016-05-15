@@ -6,6 +6,24 @@ Have you ever used `xargs -P -n 1` in an attempt to run slow commands in paralle
 
 Lateral is here to help.
 
+    Usage:
+      lateral [command]
+ 
+    Available Commands:
+      config      Change the server configuration
+      dumpconfig  Dump available configuration options
+      getpid      Print pid of server to stdout
+      kill        Kill the server with fire
+      run         Run the given command in the lateral server
+      start       Start the lateral background server
+      wait        Wait for all currently inserted tasks to finish
+ 
+    Flags:
+          --config string   config file (default $HOME/.lateral/config.yaml)
+      -h, --help            help for lateral
+      -s, --socket string   UNIX domain socket path (default $HOME/.lateral/socket.$SESSIONID)
+
+
 Example usage:
 
      # start a lateral server - one per session (login shell), runs 10 parallel tasks by default
