@@ -15,7 +15,9 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
+	"path"
 	"syscall"
 
 	"github.com/akramer/lateral/client"
@@ -27,13 +29,32 @@ import (
 
 const MAGICENV = "LAT_MAGIC"
 
+// Make the socket directory, if it does not yet exist.
+func makeSocketDir(socket string) error {
+	dir := path.Dir(socket)
+	info, err := os.Stat(dir)
+	if err == nil {
+		if !info.Mode().IsDir() {
+			return fmt.Errorf("%q is not a directory", dir)
+		}
+		return nil // directory exists
+	}
+	err = os.Mkdir(dir, 0700)
+	return err
+}
+
 func realStart(cmd *cobra.Command, args []string) error {
 	err := syscall.Setpgid(0, 0)
 	if err != nil {
 		glog.Errorln("Error setting process group ID")
 		return err
 	}
-	os.Remove(Viper.GetString("socket"))
+	socket := Viper.GetString("socket")
+	os.Remove(socket)
+	err = makeSocketDir(socket)
+	if err != nil {
+		glog.Errorln("Error creating directory for socket %q", socket)
+	}
 	l, err := server.NewUnixListener(Viper)
 	defer l.Close()
 	if err != nil {
