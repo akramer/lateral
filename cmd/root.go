@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/akramer/lateral/getsid"
+	"github.com/akramer/lateral/platform"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -93,7 +93,7 @@ func initConfig() {
 
 func defaultSocketPath() string {
 	home := os.Getenv("HOME")
-	sid, err := getsid.Getsid(0)
+	sid, err := platform.Getsid(0)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error determining sid, using 0: %v", err)
 	}
