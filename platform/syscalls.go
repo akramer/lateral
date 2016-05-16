@@ -15,9 +15,22 @@ func Getsid(pid int) (sid int, err error) {
 
 func Getfd(fd int) (cloexec bool, err error) {
 	r0, _, e1 := syscall.Syscall(syscall.SYS_FCNTL, uintptr(fd), 0, 0)
-	cloexec = int(r0)|syscall.FD_CLOEXEC != 0
+	cloexec = int(r0)&syscall.FD_CLOEXEC != 0
 	if e1 != 0 {
 		err = e1
 	}
 	return
+}
+
+func stat(fd int) (*syscall.Stat_t, error) {
+	var stat syscall.Stat_t
+	err := syscall.Fstat(fd, &stat)
+	return &stat, err
+}
+func s_isreg(v uint32) bool {
+	return v&0170000 == 0100000
+}
+
+func s_isfifo(v uint32) bool {
+	return v&0170000 == 0010000
 }

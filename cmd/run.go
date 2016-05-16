@@ -20,6 +20,7 @@ import (
 	"os/exec"
 
 	"github.com/akramer/lateral/client"
+	"github.com/akramer/lateral/platform"
 	"github.com/akramer/lateral/server"
 	"github.com/spf13/cobra"
 )
@@ -32,6 +33,10 @@ var runCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			panic(fmt.Errorf("No command specified"))
+		}
+		fds, err := platform.GetFds()
+		if err != nil {
+			panic(fmt.Errorf("Failed to determine filedescriptors to send: %v", err))
 		}
 		c, err := client.NewUnixConn(Viper)
 		if err != nil {
@@ -49,8 +54,7 @@ var runCmd = &cobra.Command{
 		req := &server.Request{
 			Type:   server.REQUEST_RUN,
 			HasFds: true,
-			// TODO: send all fds over the socket.
-			Fds: []int{0, 1, 2},
+			Fds:    fds,
 			Run: &server.RequestRun{
 				Exe:  exe,
 				Args: args,
