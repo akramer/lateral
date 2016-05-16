@@ -27,10 +27,3 @@ func stat(fd int) (*syscall.Stat_t, error) {
 	err := syscall.Fstat(fd, &stat)
 	return &stat, err
 }
-func s_isreg(v uint32) bool {
-	return v&0170000 == 0100000
-}
-
-func s_isfifo(v uint32) bool {
-	return v&0170000 == 0010000
-}
