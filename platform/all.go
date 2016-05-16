@@ -31,23 +31,13 @@ func GetFds() ([]int, error) {
 		if err != nil {
 			continue
 		}
-		cloexec, err := Getfd(i)
-		if err != nil {
-			continue
-		}
-		fmt.Printf("fd %d: cloexec: %t\n", i, cloexec)
 		fmt.Printf("fd %d: mode: %o\n", i, s.Mode&0170000)
 		if s_isreg(s.Mode) { // Add any regular files
-			fmt.Printf("Appending filedescriptor for being a regular file %d\n", i)
 			fds = append(fds, i)
 		} else if s_isfifo(s.Mode) { // add pipes
-			fmt.Printf("Appending filedescriptor for being a pipe %d\n", i)
 			fds = append(fds, i)
 		} else if i < 3 {
-			fmt.Printf("Appending filedescriptor for < 3: %d\n", i)
 			fds = append(fds, i)
-		} else {
-			fmt.Printf("Ignoring fd %d\n", i)
 		}
 	}
 	return fds, nil
