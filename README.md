@@ -26,6 +26,14 @@ Lateral is here to help.
 
 Example usage:
 
+    lateral start
+    for i in $(cat /tmp/names); do
+      lateral run -- some_command $i
+    done
+    lateral wait
+    
+With comments:
+
      # start a lateral server - one per session (login shell), runs 10 parallel tasks by default
     lateral start
     for i in $(gather list of work); do
@@ -33,7 +41,9 @@ Example usage:
       lateral run -- my_slow_command $i
     done
     # Wait for all the work to be done
-    lateral wait # if any commands returned a non-zero status, returns non-zero, also kills the server when complete.
+    lateral wait
+    # wait stops the server when all commands are complete
+    # if any commands returned a non-zero status, wait returns non-zero
     echo $?
 
 This is the most basic usage, and it's simpler than using xargs.
