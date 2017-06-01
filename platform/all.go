@@ -31,7 +31,6 @@ func GetFds() ([]int, error) {
 		if err != nil {
 			continue
 		}
-		fmt.Printf("fd %d: mode: %o\n", i, s.Mode&0170000)
 		if s_isreg(s.Mode) { // Add any regular files
 			fds = append(fds, i)
 		} else if s_isfifo(s.Mode) { // add pipes
