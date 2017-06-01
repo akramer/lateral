@@ -1,7 +1,6 @@
 package platform
 
 import (
-	"fmt"
 	"os"
 	"strconv"
 )
