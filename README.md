@@ -6,6 +6,8 @@ Have you ever used `xargs -P -n 1` in an attempt to run slow commands in paralle
 
 Lateral is here to help.
 
+## Usage
+
     Usage:
       lateral [command]
  
@@ -23,6 +25,7 @@ Lateral is here to help.
       -h, --help            help for lateral
       -s, --socket string   UNIX domain socket path (default $HOME/.lateral/socket.$SESSIONID)
 
+## Examples
 
 Example usage:
 
@@ -47,7 +50,8 @@ With comments:
     echo $?
 
 This is the most basic usage, and it's simpler than using xargs.
-It also supports much more powerful things:
+It also supports much more powerful things. It doesn't only support command-line arguments
+like xargs, it also supports filedescriptors:
 
     lateral start
     for i in $(seq 1 100); do
@@ -68,3 +72,13 @@ The parallelism is also dynamically adjustable at run-time.
 
 This also allows you to raise parallelism when things are going slower than you want. Underestimate how much work your machine can do at once? Ratchet up the number of tasks with `lateral config -p <N>`.
 Turns out that you want to run fewer? Reducing the parallelism works as well - no new tasks will be started until the number running is under the limit.
+
+## How does this black magic work?
+
+`lateral start` starts a server that listens on a unix socket that (by default) is based on your session ID. Each invocation of `lateral` in a different login shell will be independent.
+
+Unix sockets support more than passing data: they also support passing filedescriptors. When `lateral run` is called, it sends the command-line, environment, and open filedescriptors over the unix socket to the server where they are stored and queued to be run.
+
+## Logging
+
+Lateral uses glog, a Google logging library. Only the server logs, other commands do not. Its logs by default can be found in /tmp/lateral.INFO, but this can be configured using standard Google logging flags.
